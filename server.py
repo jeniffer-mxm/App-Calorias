@@ -146,73 +146,74 @@ def calculate_daily_calories(bmr: float, activity_level: str) -> float:
 
 async def analyze_food_image(image_base64: str) -> dict:
     """Analisa imagem de comida usando Google Gemini."""
+    
+    # 1. Obter chave da API
+    api_key = os.getenv("GEMINI_API_KEY")
+    
+    if not api_key:
+        return {
+            "food_name": "Erro de Análise: Chave não configurada no .env",
+            "calories": 0, "proteins": 0, "carbs": 0, "fats": 0, "confidence": "baixa"
+        }
+
     try:
-        # 1. Obter chave da API
-        api_key = os.getenv("GEMINI_API_KEY")
-        if not api_key:
-            # Fallback se a chave não estiver configurada
-            return {
-                "food_name": "Análise Gemini Desativada (Faltando API Key)",
-                "calories": 200,
-                "proteins": 5,
-                "carbs": 30,
-                "fats": 8,
-                "confidence": "baixa"
-            }
-
-        # 2. Inicializar o cliente Gemini
+        # 2. Inicializar o cliente Gemini e preparar a imagem
         client = genai.Client(api_key=api_key)
-
-        # 3. Preparar a requisição com imagem e prompt
-        # A imagem já está em base64. Precisamos convertê-la para o formato Gemini.
         image_data = base64.b64decode(image_base64)
         image = types.Part.from_bytes(data=image_data, mime_type='image/jpeg')
+
+        # 3. Definir o esquema JSON obrigatório em uma string de múltipla linha
+        json_schema_instruction = """
+{
+  "food_name": "nome do alimento",
+  "calories": "número",
+  "proteins": "número",
+  "carbs": "número",
+  "fats": "número",
+  "confidence": "alta/média/baixa"
+}
+"""
         
-        # O prompt de sistema força a resposta JSON
+        # 4. A instrução final para o modelo
         prompt = [
-            "Você é um especialista em nutrição. Analise a imagem de comida e forneça o nome do alimento e uma estimativa dos seus macronutrientes por porção. Responda APENAS em formato JSON válido, estritamente com os seguintes campos:",
-            image,
-            {
-              "food_name": "nome do alimento",
-              "calories": "número (kcal)",
-              "proteins": "número (g)",
-              "carbs": "número (g)",
-              "fats": "número (g)",
-              "confidence": "alta/média/baixa"
-            }
+            f"Você é um especialista em nutrição. Analise esta imagem de comida. Retorne os dados estritamente no formato JSON, sem formatação Markdown ou texto adicional. Os valores numéricos devem ser apenas números. Use o formato: {json_schema_instruction}",
+            image
         ]
         
-        # 4. Chamar a API
+        # 5. Chamar a API
         response = client.models.generate_content(
             model='gemini-2.5-flash',
-            contents=prompt,
+            contents=prompt, 
             config=types.GenerateContentConfig(
                 response_mime_type="application/json",
             ),
         )
 
-        # 5. Processar a resposta JSON
-        raw_json = response.text
+        # 6. Processar a resposta JSON
+        raw_json = response.text.strip().replace('```json', '').replace('```', '')
         result = json.loads(raw_json)
 
-        # 6. Conversão e Limpeza de Valores (Garantir que são floats, removendo 'kcal' ou 'g')
-        result["calories"] = float(result["calories"].split()[0])
-        result["proteins"] = float(result["proteins"].split()[0])
-        result["carbs"] = float(result["carbs"].split()[0])
-        result["fats"] = float(result["fats"].split()[0])
+        # 7. Conversão Final (Garante que são floats)
+        result["calories"] = float(result["calories"])
+        result["proteins"] = float(result["proteins"])
+        result["carbs"] = float(result["carbs"])
+        result["fats"] = float(result["fats"])
         
         return result
 
-    except Exception as e:
-        print(f"Erro na análise de imagem: {str(e)}")
-        # Retorna um placeholder de erro se a chave estiver inválida ou a API falhar
+    except APIError as e:
+        # Erro de permissão/chave inválida
+        print(f"ERRO DE API GEMINI (PERMISSÃO): {e}")
         return {
-            "food_name": "Erro na Análise (Verifique a Chave Gemini)",
-            "calories": 0,
-            "proteins": 0,
-            "carbs": 0,
-            "fats": 0,
-            "confidence": "baixa"
+            "food_name": "Erro de Permissão (Chave Inválida)",
+            "calories": 0, "proteins": 0, "carbs": 0, "fats": 0, "confidence": "baixa"
+        }
+    except Exception as e:
+        # Erro de parsing JSON ou outro erro de execução
+        print(f"ERRO DE EXECUÇÃO/PARSING: {e}")
+        return {
+            "food_name": "Erro na Análise (Falha Desconhecida)",
+            "calories": 0, "proteins": 0, "carbs": 0, "fats": 0, "confidence": "baixa"
         }
 
 # Endpoints

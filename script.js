@@ -1,5 +1,7 @@
 // Configuração da API
-const API_BASE_URL = 'http://127.0.0.1:8001/api'; 
+//const API_BASE_URL = 'http://127.0.0.1:8001/api'; 
+// DEPOIS (funciona no celular - MANTENHA ATIVO)
+const API_BASE_URL = 'http://192.168.1.102:8001/api';
 // Exemplo: 'http://192.168.1.100:8001/api' 
 // O restante do código permanece o mesmo.
 
